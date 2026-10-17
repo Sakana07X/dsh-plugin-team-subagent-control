@@ -1,0 +1,5 @@
+# 本插件作为 Cordis 宿主插件行插入（宿主平面，无需 isolate realm）。
+# 只有一种插入行：不允许重复插入，否则同名工具会重复注册。
+- insert:
+    - id: team-subagent-control
+      name: dsh-plugin-team-subagent-control
