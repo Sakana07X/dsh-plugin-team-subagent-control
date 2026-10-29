@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-team-subagent-control",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "按成员指定模型/思考强度，并允许主对话删除智能体团队中的子代理（DeepSeek Desktop 插件）",
   "author": "Sakana07X <Sakana07X@outlook.com>",

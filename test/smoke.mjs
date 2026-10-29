@@ -315,6 +315,53 @@ const pass = (label) => results.push(label)
   pass('team_delete_member：对 inactive 成员重复删除是幂等的')
 }
 
+/* ------------------ 4b. 宿主 0.2.1 命名（drainChildren / drainDescendants） ------------------ */
+
+{
+  // DSH 0.2.1 起宿主把 drainContinuableChildren/Descendants 改名为
+  // drainChildren/drainDescendants，参数形状不变。这里用一个只有新名字的
+  // 假宿主，确认插件在新旧两代宿主上都能真正释放成员。
+  const carol = agentHost('session-carol', { provider: 'deepseek-official', model: 'deepseek-flash', reasoningEffort: 'high' })
+  liveAgents.set(carol.id, carol)
+  memberRows.push({ id: carol.id, name: 'carol', role: 'teammate', status: 'running' })
+
+  const modernCalls = { children: [], forest: [] }
+  const modernSubagents = {
+    drainChildren: async (parent, ids) => {
+      modernCalls.children.push({ parent: parent?.id, ids: [...ids] })
+      for (const id of ids) {
+        liveAgents.delete(id)
+        const row = memberRows.find((item) => item.id === id)
+        if (row) row.status = 'inactive'
+      }
+    },
+    drainDescendants: async (parents) => {
+      modernCalls.forest.push(parents.map((item) => item?.id))
+    },
+  }
+
+  const modernCtx = makeCtx({ ...services, subagents: modernSubagents }).ctx
+  const modernTeam = resolveTeam(modernCtx, leadAgent)
+  assert.ok(!modernTeam.error, '新命名宿主下应能解析团队')
+  const found = findMember(modernTeam.members, 'carol')
+  assert.ok(found.member, '应能找到成员 carol')
+  const released = await releaseMember(modernCtx, modernTeam, found.member, { caller: leadAgent })
+  assert.equal(released.ok, true, `新命名宿主应释放成功：${released.message ?? ''}`)
+  assert.deepEqual(modernCalls.children, [{ parent: leadAgent.id, ids: [carol.id] }], '新命名下释放目标也必须精确到 carol')
+  assert.equal(modernCalls.forest.length, 1, '新命名下应释放成员下属子代理')
+  assert.equal(liveAgents.get(carol.id), undefined, 'carol 的运行实例应消失')
+  pass('releaseMember：兼容宿主 0.2.1 新命名 drainChildren / drainDescendants')
+
+  // 两代命名都缺失时才拒绝，并说清缺的是哪一层能力
+  const neitherCtx = makeCtx({ ...services, subagents: {} }).ctx
+  const neitherTeam = resolveTeam(neitherCtx, leadAgent)
+  const dave = { id: 'session-dave', name: 'dave', role: 'teammate', status: 'inactive' }
+  const refused = await releaseMember(neitherCtx, neitherTeam, dave, { caller: leadAgent })
+  assert.equal(refused.ok, false)
+  assert.match(refused.message, /drainChildren/)
+  pass('releaseMember：宿主两代命名都缺失时给出可读错误')
+}
+
 /* --------------------------- 5. 退化环境不崩 --------------------------- */
 
 {

@@ -9,13 +9,22 @@
 - **成员级模型路由** —— 每个团队成员可以单独指定 provider / model / reasoning effort，粒度精确到成员，主对话和其它成员不受影响。
 - **释放团队成员** —— 团长可以在对话里释放某个成员的运行实例；默认连带释放该成员自己带出来的子代理。主代理（团长自己）不允许删除。
 
+## 兼容性
+
+| 宿主 | 状态 |
+| --- | --- |
+| `DSH NEXT` 2.0.19-next（`@deepseek-ai/dsh*` 0.2.1-rc.2） | 已实测：4 个工具全部正常 |
+| 更早的 `dsh-desktop`（0.1.x） | 已实测：4 个工具全部正常 |
+
+宿主在 0.2.1 里把释放子代理的方法改了名：`drainContinuableChildren` → `drainChildren`、`drainContinuableDescendants` → `drainDescendants`（参数不变）。插件按“新名优先、旧名回退”调用，两代宿主同一份代码都能用。
+
 ## 安装
 
 插件零依赖，两种装法。
 
 **方式 A：本地路径挂载（推荐，不改包环境）**
 
-在 profile 的 `cordis.patch.yml`（Windows 一般是 `%APPDATA%\dsh-desktop\harness\profiles\web\cordis.patch.yml`）里加一行 `insert`：
+在 profile 的 `cordis.patch.yml` 里加一行 `insert`：
 
 ```yaml
 plugins:
@@ -24,6 +33,13 @@ plugins:
 ```
 
 路径按你的实际位置改，Windows 盘符也要写成 `/`。DSH 会在日志里打印 `[team-subagent-control] 已加载`。
+
+profile 目录的位置随 DSH 版本变过：
+
+| DSH | profile 目录 |
+| --- | --- |
+| `DSH NEXT` / 0.2.x | `~/.dsh/profiles/web/`（Windows：`C:\Users\<你>\.dsh\profiles\web\`） |
+| 更早的 `dsh-desktop` | `%APPDATA%\dsh-desktop\harness\profiles\web\` |
 
 **方式 B：作为包安装**
 
@@ -41,7 +57,7 @@ npm i dsh-plugin-team-subagent-control
 node test/smoke.mjs
 ```
 
-用假宿主跑 20 组断言，覆盖档位校验、覆盖合并、路由回退、删除只动目标、拒绝删团长、服务缺失、调用取消等退化路径。
+用假宿主跑 22 组断言，覆盖档位校验、覆盖合并、路由回退、删除只动目标、拒绝删团长、新旧两代宿主 API 命名、服务缺失、调用取消等退化路径。
 
 ## 工具
 

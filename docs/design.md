@@ -37,7 +37,7 @@ dsh-plugin-team-subagent-control/
 | --- | --- | --- |
 | `lib/index.js` | `ctx.tools.register()`、`ctx.on('agent/created')`、`ctx.on('session/disposed')`、`ctx.get('agents')` | 装配与兜底；给已在场和新出现的团队成员挂覆盖钩子 |
 | `lib/routes.js` | `ctx.get('llm').resolveModelInfo()`、每个 Agent 自己的 `ctx.on('agent/request')` | 保存覆盖、把它合并进冻结的 `LlmCallConfig` |
-| `lib/release.js` | `agentTeams.interrupt()`、`subagents.drainContinuableDescendants()`、`subagents.drainContinuableChildren()`、`agentTeams.listMembers()`、`agents.get()` | 删除流程与真实状态复核 |
+| `lib/release.js` | `agentTeams.interrupt()`、`subagents.drainDescendants()`、`subagents.drainChildren()`（旧宿主为 `drainContinuableDescendants()` / `drainContinuableChildren()`）、`agentTeams.listMembers()`、`agents.get()` | 删除流程与真实状态复核 |
 | `lib/team.js` | `agentTeams.tryMembership()/listMembers()`、`agents.get()` | 判断是否在团里、对方是否成员，并渲染人类可读状态 |
 | `lib/tools.js` | `tools.register()` 的工具契约 | 参数校验、错误文案、结果汇总 |
 
@@ -56,12 +56,14 @@ dsh-plugin-team-subagent-control/
 | --- | --- |
 | 判定成员存活 | `agents.get(sessionId)`，用的是它的 `status`（`running` / `inactive`） |
 | 停当前回合 | `agentTeams.interrupt(caller, targetName)`（仅团长可调用） |
-| 释放成员本体 | `subagents.drainContinuableChildren(parent, [childId])`（`dsh-subagent/lib/typert.host.js:163`），要求 `parent` 是同一个活着的 Agent |
-| 释放成员带出来的子代理 | `subagents.drainContinuableDescendants([memberAgent])` |
+| 释放成员本体 | `subagents.drainChildren(parent, [childId])`，要求 `parent` 是同一个活着的 Agent；DSH 0.2.1 之前叫 `drainContinuableChildren` |
+| 释放成员带出来的子代理 | `subagents.drainDescendants([memberAgent])`；DSH 0.2.1 之前叫 `drainContinuableDescendants` |
 
-所以流程是：**解析目标 → 拒绝主代理 → 正在跑就先 interrupt → 释放下属 → drainContinuableChildren → 用 listMembers + agents.get 复核**。每一步 20s 超时，任何一步失败都变成一句可读说明，不阻塞主对话、不抛异常。
+两代命名参数形状一致，插件按“新名优先、旧名回退”取用（`lib/release.js` 的 `pickMethod()`），所以同一份代码在 0.2.1 与更早的宿主上都可用。
 
-**关键限制**：`drainContinuableChildren` 释放的是运行实例，团队名册是持久化的（Lead 会话日志），宿主没有删除名册行的 API。删除后 `listMembers` 和界面里该成员仍然存在、状态为 `inactive`。卡上显示 inactive，实际也确实没有运行实例，状态一致；再次 `send_message` 会冷恢复。要彻底消失只能等宿主开放名册删除 API。
+所以流程是：**解析目标 → 拒绝主代理 → 正在跑就先 interrupt → 释放下属 → 释放成员本体 → 用 listMembers + agents.get 复核**。每一步 20s 超时，任何一步失败都变成一句可读说明，不阻塞主对话、不抛异常。
+
+**关键限制**：`drainChildren` 释放的是运行实例，团队名册是持久化的（Lead 会话日志），宿主没有删除名册行的 API（0.2.1 里同样没有 `removeMember` / `deleteMember` / `releaseMember`）。删除后 `listMembers` 和界面里该成员仍然存在、状态为 `inactive`。卡上显示 inactive，实际也确实没有运行实例，状态一致；再次 `send_message` 会冷恢复。要彻底消失只能等宿主开放名册删除 API。
 
 ## 5. 稳定性取舍
 
@@ -84,7 +86,8 @@ dsh-plugin-team-subagent-control/
 6. **档位校验依赖 `llm.resolveModelInfo`**：宿主没暴露该方法时插件放行并打警告，拼错会在该成员回合由宿主报错。
 7. **非团队模式**：工具明确说明当前会话不在智能体团队中，不做隐含动作。
 8. **成员互删不支持**：只有团长能删，与宿主 `interrupt` 的权限模型一致。
-9. **若宿主把团队成员改成非直系子代理**：`drainContinuableChildren` 返回 `UNAUTHORIZED`，插件原样回报并建议先用 `interrupt_agent`。
+9. **若宿主把团队成员改成非直系子代理**：`drainChildren` 返回 `UNAUTHORIZED`，插件原样回报并建议先用 `interrupt_agent`。
+10. **跨宿主版本**：释放依赖 `subagents.drainChildren` / `drainDescendants`（旧宿主为 `drainContinuable*`）。两代都没有时插件在第一步就说明缺哪层能力，不会静默失败。
 
 ## 7. 待办
 
